@@ -12,12 +12,48 @@ app.use(express.urlencoded({ extended: true }));
 
 // MongoDB Connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/contactmanagement';
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => console.log('MongoDB Connected Successfully'))
-.catch((err) => console.error('MongoDB Connection Error:', err));
+
+// Connection state
+let isConnected = false;
+
+// Function to connect to MongoDB
+const connectDB = async () => {
+  if (isConnected) {
+    return;
+  }
+
+  try {
+    await mongoose.connect(MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+    isConnected = true;
+    console.log('MongoDB Connected Successfully');
+  } catch (error) {
+    console.error('MongoDB Connection Error:', error);
+    isConnected = false;
+    throw error;
+  }
+};
+
+// Handle connection events
+mongoose.connection.on('connected', () => {
+  isConnected = true;
+  console.log('Mongoose connected to MongoDB');
+});
+
+mongoose.connection.on('error', (err) => {
+  isConnected = false;
+  console.error('Mongoose connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  isConnected = false;
+  console.log('Mongoose disconnected');
+});
+
+// Initial connection attempt
+connectDB().catch(console.error);
 
 // Contact Schema
 const contactSchema = new mongoose.Schema({
@@ -70,16 +106,31 @@ app.get('/', (req, res) => {
 // GET - Fetch all contacts
 app.get('/api/contacts', async (req, res) => {
   try {
+    // Ensure MongoDB is connected
+    if (!isConnected) {
+      await connectDB();
+    }
+    
     const contacts = await Contact.find().sort({ createdAt: -1 });
     res.json(contacts);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch contacts', message: error.message });
+    console.error('Error fetching contacts:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch contacts', 
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
 // POST - Create a new contact
 app.post('/api/contacts', async (req, res) => {
   try {
+    // Ensure MongoDB is connected
+    if (!isConnected) {
+      await connectDB();
+    }
+
     const { name, email, phone, message } = req.body;
 
     // Validation
@@ -103,13 +154,23 @@ app.post('/api/contacts', async (req, res) => {
     const savedContact = await contact.save();
     res.status(201).json(savedContact);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create contact', message: error.message });
+    console.error('Error creating contact:', error);
+    res.status(500).json({ 
+      error: 'Failed to create contact', 
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
 // DELETE - Delete a contact
 app.delete('/api/contacts/:id', async (req, res) => {
   try {
+    // Ensure MongoDB is connected
+    if (!isConnected) {
+      await connectDB();
+    }
+
     const { id } = req.params;
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -124,13 +185,36 @@ app.delete('/api/contacts/:id', async (req, res) => {
 
     res.json({ message: 'Contact deleted successfully', contact: deletedContact });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete contact', message: error.message });
+    console.error('Error deleting contact:', error);
+    res.status(500).json({ 
+      error: 'Failed to delete contact', 
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
 // Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is running' });
+app.get('/api/health', async (req, res) => {
+  try {
+    // Check MongoDB connection
+    if (!isConnected) {
+      await connectDB();
+    }
+    
+    res.json({ 
+      status: 'OK', 
+      message: 'Server is running',
+      mongodb: isConnected ? 'connected' : 'disconnected'
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      status: 'ERROR', 
+      message: 'Server error',
+      mongodb: 'disconnected',
+      error: error.message
+    });
+  }
 });
 
 // Export for Vercel serverless functions
