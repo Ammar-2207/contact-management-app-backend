@@ -52,6 +52,21 @@ const Contact = mongoose.model('Contact', contactSchema);
 
 // API Routes
 
+// Root route - API information
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Contact Management API',
+    version: '1.0.0',
+    endpoints: {
+      'GET /api/contacts': 'Fetch all contacts',
+      'POST /api/contacts': 'Create a new contact',
+      'DELETE /api/contacts/:id': 'Delete a contact by ID',
+      'GET /api/health': 'Health check endpoint'
+    },
+    status: 'running'
+  });
+});
+
 // GET - Fetch all contacts
 app.get('/api/contacts', async (req, res) => {
   try {
@@ -118,8 +133,14 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+// Export for Vercel serverless functions
+module.exports = app;
+
+// Start server locally (not used on Vercel)
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
 
